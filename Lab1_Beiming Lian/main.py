@@ -1,0 +1,1 @@
+import lab1_check2
