@@ -1,13 +1,14 @@
 from machine import Pin
 import utime
 
+# Power-enable for NeoPixe
 led = Pin(13, Pin.OUT)
 led.value(0)
 
 def blink(duration):
     led.value(1)          
     utime.sleep(duration)
-    led.value(0)          # 熄灭
+    led.value(0)          
 
 while True:
     for letter in ("...", "---", "..."):  # S、O、S
