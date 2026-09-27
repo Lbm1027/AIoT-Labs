@@ -3,8 +3,8 @@ import time
 
 # Pin assignments
 LIGHT_PIN = 39   # A3: analog light sensor
-LED_PIN = 4      # A5: external LED
-PIEZO_PIN = 27   # 27: piezo/vibration motor
+LED_PIN = 13      # 27: external LED
+PIEZO_PIN = 27   # 13: piezo/vibration motor
 
 # Configure the ADC for 12-bit readings
 light_sensor = ADC(Pin(LIGHT_PIN))
