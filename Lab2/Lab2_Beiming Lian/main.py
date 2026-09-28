@@ -1,7 +1,7 @@
 # import lab2_check1
 import lab2_check2
 
-# Lisen to the serial port for debugging
+# Listen to the serial port for debugging
 # python -m serial.tools.miniterm COM3 115200 --xonxoff
 
 # Upload the code to the ESP32 using mpfshell
