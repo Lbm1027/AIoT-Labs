@@ -1,5 +1,5 @@
-# import lab2_check1
-# import lab2_check2
+#import lab2_check1
+#import lab2_check2
 import lab2_check3
 
 # Lisen to the serial port for debugging
