@@ -2,49 +2,139 @@ from machine import Pin, I2C, RTC
 import time
 import ssd1306
 
-# Hardware Setup
-i2c = I2C(0, scl=Pin(22), sda=Pin(23))
-oled = ssd1306.SSD1306_I2C(128, 64, i2c)
+# Team-consistent pin assignments
+SDA_PIN = 22
+SCL_PIN = 20
+BUTTON_A_PIN = 15
+BUTTON_B_PIN = 33
+BUTTON_C_PIN = 14
 
-btn_a = Pin(15, Pin.IN, Pin.PULL_UP)  # Increment Hour
-btn_b = Pin(32, Pin.IN, Pin.PULL_UP)  # Increment Minute
+OLED_WIDTH = 128
+OLED_HEIGHT = 32
+OLED_ADDR = 0x3C
+I2C_FREQ = 400000
+DEBOUNCE_MS = 30
+DISPLAY_MS = 100
 
-rtc = RTC()
-# Initial hardcoded time: 2026-10-07 12:00:00
-rtc.datetime((2026, 10, 7, 3, 12, 0, 0, 0))
+START_TIME = (2026, 9, 30, 2, 9, 0, 0, 0)
 
-last_debounce_a = 0
-last_debounce_b = 0
-DEBOUNCE_MS = 200
+def date_text(current):
+    return "%04d-%02d-%02d" % (current[0], current[1], current[2])
+
+def time_text(current):
+    return "%02d:%02d:%02d" % (current[4], current[5], current[6])
+
+class DebouncedButton:
+    def __init__(self, name, number):
+        self.name = name
+        self.pin = Pin(number, Pin.IN, Pin.PULL_UP)
+        self.pin.irq(handler=None)
+        self.state = self.pin.value()
+        self.candidate = self.state
+        self.since = time.ticks_ms()
+        self.pending = True
+        self.debouncing = False
+        self.initializing = True
+        self.callback = self._on_edge
+
+    def _on_edge(self, pin):
+        if not self.pending:
+            self.pending = True
+            pin.irq(handler=None)
+
+    def _arm(self):
+        self.pin.irq(trigger=Pin.IRQ_FALLING | Pin.IRQ_RISING, handler=self.callback)
+        if self.pin.value() != self.state:
+            self.callback(self.pin)
+
+    def update(self, now):
+        if not self.pending:
+            return None
+        current = self.pin.value()
+        if not self.debouncing:
+            self.candidate = current
+            self.since = now
+            self.debouncing = True
+        elif current != self.candidate:
+            self.candidate = current
+            self.since = now
+
+        if time.ticks_diff(now, self.since) < DEBOUNCE_MS:
+            return None
+
+        event = None
+        if not self.initializing and self.candidate != self.state:
+            event = self.candidate
+
+        self.state = self.candidate
+        self.initializing = False
+        self.debouncing = False
+        self.pending = False
+        self._arm()
+        return event
+
+    def close(self):
+        self.pin.irq(handler=None)
+
+class Watch:
+    def __init__(self, rtc, display):
+        self.rtc = rtc
+        self.display = display
+        self.last_frame = None
+
+    def on_press(self, name):
+        current = list(self.rtc.datetime())
+        if name == "A":
+            current[4] = (current[4] + 1) % 24
+        elif name == "B":
+            current[5] = (current[5] + 1) % 60
+        else:
+            current[6] = 0
+            current[7] = 0
+        self.rtc.datetime(tuple(current))
+        return True
+
+    def draw(self):
+        current = self.rtc.datetime()
+        frame = current[:7]
+        if frame == self.last_frame:
+            return False
+
+        self.display.fill(0)
+        self.display.text(date_text(current), 0, 0, 1)
+        self.display.text(time_text(current), 32, 8, 1)
+        self.display.text("A:H+ B:M+ C:S=0", 0, 24, 1)
+        self.display.show()
+        self.last_frame = frame
+        return True
 
 def main():
-    global last_debounce_a, last_debounce_b
-    
-    while True:
-        now = time.ticks_ms()
-        year, month, day, _, hour, minute, second, _ = rtc.datetime()
-        
-        # Button A: Increment Hour
-        if btn_a.value() == 0 and time.ticks_diff(now, last_debounce_a) > DEBOUNCE_MS:
-            hour = (hour + 1) % 24
-            rtc.datetime((year, month, day, 0, hour, minute, second, 0))
-            last_debounce_a = now
+    rtc = RTC()
+    rtc.datetime(START_TIME)
 
-        # Button B: Increment Minute
-        if btn_b.value() == 0 and time.ticks_diff(now, last_debounce_b) > DEBOUNCE_MS:
-            minute = (minute + 1) % 60
-            rtc.datetime((year, month, day, 0, hour, minute, second, 0))
-            last_debounce_b = now
+    i2c = I2C(0, sda=Pin(SDA_PIN), scl=Pin(SCL_PIN), freq=I2C_FREQ)
+    display = ssd1306.SSD1306_I2C(OLED_WIDTH, OLED_HEIGHT, i2c, addr=OLED_ADDR)
+    watch = Watch(rtc, display)
+    buttons = [DebouncedButton("A", BUTTON_A_PIN), DebouncedButton("B", BUTTON_B_PIN), DebouncedButton("C", BUTTON_C_PIN)]
 
-        # Refresh Display
-        oled.fill(0)
-        oled.text("SMARTWATCH", 24, 5)
-        oled.text("----------------", 0, 18)
-        time_str = "{:02d}:{:02d}:{:02d}".format(hour, minute, second)
-        oled.text(time_str, 32, 35)
-        oled.show()
-        
-        time.sleep_ms(100)
+    next_draw = time.ticks_ms()
+    try:
+        while True:
+            now = time.ticks_ms()
+            for button in buttons:
+                event = button.update(now)
+                if event == 0:
+                    if watch.on_press(button.name):
+                        next_draw = now
+
+            if time.ticks_diff(now, next_draw) >= 0:
+                next_draw = time.ticks_add(now, DISPLAY_MS)
+                watch.draw()
+
+            time.sleep_ms(2)
+    finally:
+        for button in buttons:
+            button.close()
 
 if __name__ == "__main__":
     main()
