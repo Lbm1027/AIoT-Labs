@@ -1,1 +1,2 @@
 import lab2_checkpoint3.py
+import lab3_checkpoint1.py
