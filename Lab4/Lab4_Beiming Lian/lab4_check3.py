@@ -11,7 +11,7 @@ WIFI_SSID = "Columbia University"
 WIFI_PASSWORD = ""
 
 # Fill in the OpenWeatherMap API key.
-OPENWEATHER_API_KEY = "0c7fefae1a438058096a1d1047a4ea09"
+OPENWEATHER_API_KEY = ""
 
 # Same OLED wiring as your working Lab3 program.
 SDA_PIN = 22
